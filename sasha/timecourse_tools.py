@@ -4,7 +4,7 @@ Module for analysing BOLD timecourses
 """
 import numpy as np
 import matplotlib.pyplot as plt
-import scipy
+import scipy.signal
 
 
 def butter_highpass(cutoff, fs, order=5):
