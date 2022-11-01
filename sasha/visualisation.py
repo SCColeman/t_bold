@@ -10,9 +10,9 @@ import matplotlib.pyplot as plt
 def image_voxel_slices(img, coords3d, t=0):
     voxel = coords3d
     slices = list()
-    slices.append(img[voxel[0], :, :, voxel[3]])
-    slices.append(img[:, voxel[1], :, voxel[3]])
-    slices.append(img[:, :, voxel[2], voxel[3]])
+    slices.append(img[voxel[0], :, :, t])
+    slices.append(img[:, voxel[1], :, t])
+    slices.append(img[:, :, voxel[2], t])
 
     fig, [ax1, ax2, ax3] = plt.subplots(3, 1, figsize=(4, 10))
     fig.suptitle('Radiological Orientation', fontsize=16)
