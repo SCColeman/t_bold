@@ -75,7 +75,8 @@ class Timecourse:
         y = butter_highpass_filter(self.tcourse, 1 / (2 * block_len), 1 / self.TR)
         self.tcourse = y
         self.title = 'Highpass Filtered BOLD Data'
-        self.timecourse_name = self.timecourse_name + '_hpass'
+        if self.path is not None:
+            self.timecourse_name = self.timecourse_name + '_hpass'
         self.savefile()
 
     def norm_to_baseline(self, baseline_window):
@@ -84,7 +85,8 @@ class Timecourse:
         baseline = np.mean(self.tcourse[baseline_index.astype(int)])
         tcourse = self.tcourse - baseline
         self.tcourse = tcourse
-        self.timecourse_name = self.timecourse_name + '_blined'
+        if self.path is not None:
+            self.timecourse_name = self.timecourse_name + '_blined'
         self.savefile()
 
     def percentage_change(self, baseline_window):
@@ -94,59 +96,9 @@ class Timecourse:
         tcourse = (self.tcourse / baseline) * 100
         self.tcourse = tcourse
         self.axlabel = "Percentage Change \n from Baseline (%)"
-        self.timecourse_name = self.timecourse_name + '_pchange'
+        if self.path is not None:
+            self.timecourse_name = self.timecourse_name + '_pchange'
         self.savefile()
-
-    def epoch(self, events, window, plot=True):
-        epoch_len = int((window[1] - window[0]) / self.TR)
-        epochs = np.zeros((len(events), epoch_len))
-        for event in range(len(events)):
-            event_i = np.arange((events[event] + window[0]) / self.TR,
-                                (events[event] + window[1]) / self.TR)
-            epochs[event, :] = self.tcourse[event_i.astype(int)]
-        epoched = np.mean(epochs, axis=0)
-        if not plot:
-            return epoched
-        else:
-            fig, ax = plt.subplots()
-            ax.plot(np.arange(0, epoch_len * self.TR, self.TR), epoched)
-            ax.set_xlabel('Time (s)', fontsize=16)
-            ax.set_ylabel(self.axlabel, fontsize=16)
-            ax.set_title(self.title + ' (Epoched)', fontsize=16, fontweight='bold')
-            fig.set_figheight(4)
-            fig.set_figwidth(7)
-            plt.tight_layout()
-            return epoched, ax
-
-    def epoch_conditions(self, events, window, plot=True):
-        epoched = []
-        epoch_len = int((window[1] - window[0]) / self.TR)
-        for condition in range(len(events)):
-            events_cond = events[condition]
-            epoched.append(self.epoch(events_cond, window, plot=False))
-        if plot:
-            fig, ax = plt.subplots()
-            for condition in range(len(events)):
-                ax.plot(np.arange(0, epoch_len * self.TR, self.TR), epoched[condition])
-            ax.set_xlabel('Time (s)', fontsize=16)
-            ax.set_ylabel(self.axlabel, fontsize=16)
-            ax.set_title(self.title + ' (Epoched)', fontsize=16, fontweight='bold')
-            fig.set_figheight(4)
-            fig.set_figwidth(7)
-            plt.tight_layout()
-            return epoched, ax
-        else:
-            return epoched
-
-    def tstat(self, on_events, off_events, on_window, off_window):
-        epochs_on = self.epoch(on_events, on_window, plot=False)
-        epochs_off = self.epoch(off_events, off_window, plot=False)
-        p_on = np.mean(epochs_on.flatten())
-        p_off = np.mean(epochs_off.flatten())
-        n_on = np.std(epochs_on.flatten())
-        n_off = np.std(epochs_off.flatten())
-        t = (p_on - p_off) / (n_on + n_off)
-        return t
 
 
 def epoch(data, tr, events, window, plot=True):
