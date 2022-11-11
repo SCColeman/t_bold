@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import scipy.signal
 import os
 
+
 def butter_highpass(cutoff, fs, order=5):
     nyq = 0.5 * fs
     normal_cutoff = cutoff / nyq
@@ -151,3 +152,9 @@ def tstat(data, tr, on_events, off_events, on_window, off_window):
     n_off = np.std(epochs_off.flatten())
     t = (p_on - p_off) / (n_on + n_off)
     return t
+
+
+def find_peak_voxel(stat_map, mask):
+    masked_stat = np.multiply(stat_map, mask)
+    peak_voxel = np.where(masked_stat == np.amax(masked_stat))
+    return peak_voxel

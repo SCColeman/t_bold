@@ -40,7 +40,7 @@ class Brain:
     def get_data(self):
         return self.data
 
-    def remove_drift(self, block_len):
+    def remove_drift(self, block_len, save=False):
         brain_filtered = np.zeros(self.dims)
         b, a = butter_highpass(1 / (2 * block_len), 1 / self.tr)
         for row in np.arange(self.dims[0]):
@@ -51,9 +51,10 @@ class Brain:
                     brain_filtered[row, col, sli, :] = y
         self.data = brain_filtered
         self.data_name = self.data_name + '_hpass'
-        self.savefile()
+        if save:
+            self.savefile()
 
-    def percentage_change(self, baseline_window):
+    def percentage_change(self, baseline_window, save=False):
         brain_preprocced = np.zeros(self.dims)
         for row in np.arange(self.dims[0]):
             for col in np.arange(self.dims[1]):
@@ -63,9 +64,10 @@ class Brain:
                     brain_preprocced[row, col, sli, :] = timcourse.get_values()
         self.data = brain_preprocced
         self.data_name = self.data_name + '_pchange'
-        self.savefile()
+        if save:
+            self.savefile()
 
-    def norm_to_baseline(self, baseline_window):
+    def norm_to_baseline(self, baseline_window, save=False):
         brain_preprocced = np.zeros(self.dims)
         for row in np.arange(self.dims[0]):
             for col in np.arange(self.dims[1]):
@@ -74,8 +76,9 @@ class Brain:
                     timecourse.norm_to_baseline(baseline_window=baseline_window)
                     brain_preprocced[row, col, sli, :] = timecourse.get_values()
         self.data = brain_preprocced
-        self.data_name = self.data_name + '_blined'
-        self.savefile()
+        self.data_name = self.data_name + '_rezeroed'
+        if save:
+            self.savefile()
 
     def brain_tstat(self, on_events, off_events, on_window, off_window):
         t = np.zeros(self.dims[0:3])
@@ -86,3 +89,11 @@ class Brain:
                     t[row, col, sli] = tstat(voxel_timecourse.get_values(), self.tr, on_events, off_events,
                                                               on_window, off_window)
         return t
+
+
+def save_img(data, brain_obj, identifier):
+    ni_img = nib.Nifti1Image(data, brain_obj.affine)
+    output_path = os.path.join(brain_obj.path, brain_obj.basename, brain_obj.basename +
+                               '_' + identifier + '.nii.gz')
+    nib.save(ni_img, output_path)
+
