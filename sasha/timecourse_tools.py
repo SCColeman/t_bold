@@ -23,6 +23,14 @@ def butter_highpass_filter(data, cutoff, fs, order=5):
 
 
 class Timecourse:
+    """
+    Attributes
+    data : np.array
+        Time-series haemodynamic data at a single location.
+    TR : int
+        Repetition time of the fMRI sequence, i.e., sampling frequency in seconds.
+
+    """
     def __init__(self, data, coords, tr, savepath=None, basename=None, specifier=None):
         self.path = savepath
         self.basename = basename
