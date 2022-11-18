@@ -21,7 +21,7 @@ def register_3d(static, moving, static_affine, moving_affine, dof=12):
     moving_grid2world = moving_affine
     c_of_mass = transform_centers_of_mass(static, static_grid2world,
                                           moving, moving_grid2world)
-    nbins = 32
+    nbins = 64
     level_iters = [10000, 1000, 100]
     sampling_prop = None
     metric = MutualInformationMetric(nbins, sampling_prop)
