@@ -3,60 +3,102 @@ Registration module for masks and higher level analysis
 
 """
 
-import os
 import numpy as np
+import nibabel as nib
+import numpy as np
+import os
+import SimpleITK as sitk
+
 from dipy.viz import regtools
-from dipy.io.image import load_nifti
-from dipy.align.imaffine import (transform_centers_of_mass,
-                                 AffineMap,
-                                 MutualInformationMetric,
-                                 AffineRegistration)
-from dipy.align.transforms import (TranslationTransform3D,
-                                   RigidTransform3D,
-                                   AffineTransform3D)
 
 
-def register_3d(static, moving, static_affine, moving_affine, dof=12):
-    static_grid2world = static_affine
-    moving_grid2world = moving_affine
-    c_of_mass = transform_centers_of_mass(static, static_grid2world,
-                                          moving, moving_grid2world)
-    nbins = 64
-    level_iters = [10000, 1000, 100]
-    sampling_prop = None
-    metric = MutualInformationMetric(nbins, sampling_prop)
-    affreg = AffineRegistration(metric=metric, level_iters=level_iters)
-    transform = TranslationTransform3D()
-    params0 = None
-    starting_affine = c_of_mass.affine
-    translation = affreg.optimize(static, moving, transform, params0,
-                                  static_grid2world, moving_grid2world,
-                                  starting_affine=starting_affine)
-    if dof == 3:
-        transformed = translation.transform(moving)
-        return transformed, translation
+def nibabel_to_sitk(vol: nib.Nifti1Image) -> sitk.Image:
+    data = np.transpose(np.asanyarray(vol.dataobj))
+    header = vol.header
+    spacing = np.array(header.get_zooms(), dtype='float64')
+    affine = header.get_best_affine()
+    affine[:2] *= -1
+    direction = affine[:3, :3] / spacing
+    origin = affine[:3, 3]
+    vol_sitk = sitk.GetImageFromArray(data)
+    vol_sitk.SetSpacing(spacing)
+    vol_sitk.SetOrigin(origin)
+    vol_sitk.SetDirection(direction.flatten())
 
-    if dof > 3:
-        transform = RigidTransform3D()
-        params0 = None
-        starting_affine = translation.affine
-        rigid = affreg.optimize(static, moving, transform, params0,
-                                static_grid2world, moving_grid2world,
-                                starting_affine=starting_affine)
+    return vol_sitk
 
-    if dof == 6:
-        transformed = rigid.transform(moving)
-        return transformed, rigid
 
-    if dof == 12:
-        transform = AffineTransform3D()
-        params0 = None
-        starting_affine = rigid.affine
-        affine = affreg.optimize(static, moving, transform, params0,
-                                 static_grid2world, moving_grid2world,
-                                 starting_affine=starting_affine)
-        transformed = affine.transform(moving)
-        return transformed, affine
+def sitk_to_nibabel(vol: sitk.Image) -> nib.Nifti1Image:
+    vol_np = sitk.GetArrayFromImage(vol)
+    vol_np = np.transpose(vol_np)
+    affine = sitk_get_affine(vol)
+    affine[:2] *= -1
+
+    return nib.Nifti1Image(vol_np, affine)
+
+
+def sitk_get_affine(vol: sitk.Image) -> np.array:
+    origin = np.array(vol.GetOrigin())
+    spacing = vol.GetSpacing()
+    direction = np.reshape(vol.GetDirection(), (3, 3))
+    affine = np.eye(4, 4, dtype='float64')
+    affine[:3, :3] = spacing * direction
+    affine[:3, 3] = origin
+
+    return affine
+
+
+def register_3d(static_fname, moving_fname):
+
+    # load in images using nibabel, remove extra dimensions
+    img_fixed = nib.load(static_fname)
+    if len(img_fixed.shape) == 4:
+        img_fixed = img_fixed.slice[:, :, :, 0]
+    fixed = img_fixed.get_fdata()
+    affine_fixed = img_fixed.affine
+
+    img_moving = nib.load(moving_fname)
+    if len(img_moving.shape) == 4:
+        img_moving = img_moving.slicer[:, :, :, 0]
+    moving = img_moving.get_fdata()
+    affine_moving = img_moving.affine
+
+    fixed_image = nibabel_to_sitk(img_fixed)
+    moving_image = nibabel_to_sitk(img_moving)
+
+    initial_transform = sitk.CenteredTransformInitializer(fixed_image,
+                                                          moving_image,
+                                                          sitk.AffineTransform(3),
+                                                          sitk.CenteredTransformInitializerFilter.GEOMETRY)
+    registration_method = sitk.ImageRegistrationMethod()
+
+    registration_method.SetMetricAsMattesMutualInformation(numberOfHistogramBins=32)
+
+    registration_method.SetMetricSamplingPercentage(0.50)
+
+    registration_method.SetInterpolator(sitk.sitkLinear)
+
+    registration_method.SetOptimizerAsConjugateGradientLineSearch(learningRate=1, numberOfIterations=128,
+                                                                  convergenceMinimumValue=1e-8,
+                                                                  convergenceWindowSize=50)
+    registration_method.SetOptimizerScalesFromPhysicalShift()
+
+    registration_method.SetInitialTransform(initial_transform, inPlace=True)
+
+    registration_method.SetShrinkFactorsPerLevel(shrinkFactors=[8, 2, 1])
+    registration_method.SetSmoothingSigmasPerLevel(smoothingSigmas=[2, 1, 0])
+    registration_method.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
+
+    final_transform = registration_method.Execute(sitk.Cast(fixed_image, sitk.sitkFloat32),
+                                                  sitk.Cast(moving_image, sitk.sitkFloat32))
+
+    moving_resampled = sitk.Resample(moving_image, fixed_image, final_transform, sitk.sitkLinear, 0.0,
+                                     moving_image.GetPixelID())
+
+    moving_resampled_img = sitk_to_nibabel(moving_resampled)
+    moving_resampled_data = moving_resampled_img.get_fdata()
+
+    return moving_resampled_data, final_transform
 
 
 def register_func2standard(data_fname, standard_fname, functional_fname, anatomical_fname, show):

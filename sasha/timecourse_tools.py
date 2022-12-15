@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.signal
 import os
+from dipy.io.image import load_nifti
 
 
 def butter_highpass(cutoff, fs, order=5):
@@ -31,14 +32,17 @@ class Timecourse:
         Repetition time of the fMRI sequence, i.e., sampling frequency in seconds.
 
     """
-    def __init__(self, data, coords, tr, savepath=None, basename=None, specifier=None):
+    def __init__(self, data, coords=None, tr=None, savepath=None, basename=None, specifier=None):
         self.path = savepath
         self.basename = basename
         self.data = data
         self.coords = coords
         self.TR = tr
         voxel = coords
-        tcourse = data[voxel[0], voxel[1], voxel[2], :]
+        if not len(np.shape(data)) == 1:
+            tcourse = np.squeeze(data[voxel[0], voxel[1], voxel[2], :])
+        else:
+            tcourse = data
         self.tcourse = tcourse
         time = np.linspace(tr, len(tcourse) * tr, len(tcourse))
         self.time = time
@@ -68,6 +72,10 @@ class Timecourse:
     def get_values(self):
         values = self.tcourse
         return values
+
+    def save_timecourse(self, fname):
+        values = self.tcourse
+        np.savetxt(fname, values)
 
     def plot_tcourse(self):
         fig, ax = plt.subplots()
@@ -162,7 +170,12 @@ def tstat(data, tr, on_events, off_events, on_window, off_window):
     return t
 
 
-def find_peak_voxel(stat_map, mask):
+def find_peak_voxel(stat_map_file, mask_file, polarity):
+    stat_map, stat_map_affine = load_nifti(stat_map_file)
+    mask, mask_affine = load_nifti(mask_file)
     masked_stat = np.multiply(stat_map, mask)
-    peak_voxel = np.where(masked_stat == np.amax(masked_stat))
-    return peak_voxel
+    if polarity == 'positive':
+        peak_voxel = np.where(masked_stat == np.amax(masked_stat))
+    elif polarity == 'negative':
+        peak_voxel = np.where(masked_stat == np.amin(masked_stat))
+    return np.array(peak_voxel)

@@ -9,15 +9,16 @@ import nibabel as nib
 import os
 from dipy.io.image import load_nifti
 from pathlib import Path
+from scipy import stats
 
 class HigherTimecourse:
-    def __init__(self, data_list, coords_list, TR):
-        self.data_list = data_list
+    def __init__(self, data_fname_list, coords_list, TR):
+        self.data_list = data_fname_list
         self.coords_list = coords_list
         self.TR = TR
         tcourse_list = []
         for lower in range(len(self.data_list)):
-            data = self.data_list[lower]
+            data, affine = load_nifti(data_fname_list[lower])
             coords = self.coords_list[lower]
             tcourse_list.append(Timecourse(data, coords, self.TR))
         self.tcourse_list = tcourse_list
@@ -28,28 +29,40 @@ class HigherTimecourse:
         return values
 
     # pre-processing steps
-    def average_inputs(self):
-        mean_tcourse = np.mean([self.tcourse_list[x].get_values() for x in range(len(self.data_list))], axis=0)
-        return mean_tcourse
-
     def percentage_change(self, baseline_window):
-        for lower in range(len(self.data_list)):
+        for lower in range(len(self.tcourse_list)):
             self.tcourse_list[lower].percentage_change(baseline_window=baseline_window)
         self.axlabel = 'Percentage Change (%)'
 
     def remove_drift(self, block_len):
-        for lower in range(len(self.data_list)):
+        for lower in range(len(self.tcourse_list)):
             self.tcourse_list[lower].remove_drift(block_len=block_len)
 
     def norm_to_baseline(self, baseline_window):
-        for lower in range(len(self.data_list)):
+        for lower in range(len(self.tcourse_list)):
             self.tcourse_list[lower].norm_to_baseline(baseline_window=baseline_window)
+
+    def separate_conditions(self, events_list, window):
+        n_conds = len(events_list)
+        n_runs = len(events_list[0])
+        all_epochs = []
+        for cond in range(n_conds):
+            epochs_cond = []
+            for run in range(n_runs):
+                events_sublist = events_list[cond][run]
+                lower_timecourse = self.tcourse_list[run].get_values()
+                for event in events_sublist:
+                    window_index = np.arange((event + window[0]) / self.TR, (event + window[1]) / self.TR)
+                    epoch_i = lower_timecourse[window_index.astype(int)]
+                    epochs_cond.append(epoch_i)
+            all_epochs.append(epochs_cond)
+        return all_epochs
 
     ### epoching
     def epoch(self, events, window):
         epoched = []
-        for lower in range(len(self.data_list)):
-            epoched.append(self.tcourse_list[lower].epoch(events[lower], window, plot=False))
+        for lower in range(len(self.tcourse_list)):
+            epoched.append(epoch(self.tcourse_list[lower].get_values(), self.TR, events[lower], window, plot=False))
         return epoched
 
     def epoch_conditions(self, events, window, plot=True):
@@ -70,7 +83,8 @@ class HigherTimecourse:
             plt.tight_layout()
             return epoched_cond, ax
         else:
-            return epoched_cond
+            ax = []
+            return epoched_cond, ax
 
     def epoch_norm_to_window(self, epoched, window, plot=True):
         epoched_norm = []
@@ -90,7 +104,21 @@ class HigherTimecourse:
             plt.tight_layout()
             return epoched_norm, ax
         else:
-            return epoched_norm
+            ax = []
+            return epoched_norm, ax
+
+
+class HigherTimecourseFromArrays(HigherTimecourse):
+
+    def __init__(self, data_fname_list, TR):
+        self.TR = TR
+        self.axlabel = 'Amplitude (A.U)'
+        tcourse_list = []
+        for lower in range(len(data_fname_list)):
+            tcourse_list.append(Timecourse(data_fname_list[lower], coords=None,
+                                           tr=self.TR))
+        self.tcourse_list = tcourse_list
+
 
 
 def higher_level_statmap(statmap_fname_list, standard_fname, functional_fname, anatomical_fname,
@@ -171,4 +199,72 @@ class HigherStat:
         nib.save(nib.Nifti1Image(avg_statmap, self.standard_affine),
                  os.path.join(self.savepath, self.basename, output_fname))
         return avg_statmap
+
+
+def time_window_t_test(timecourse_list, tr, window):
+    n_subs = len(timecourse_list)
+    n_conds = len(timecourse_list[0])
+    window_index = np.arange(window[0] / tr, window[1] / tr)
+
+    power_list = []
+    for cond in range(n_conds):
+        power_list_cond = []
+        for sub in range(n_subs):
+            timecourse = timecourse_list[sub][cond]
+            power_list_cond.append(np.mean(timecourse[window_index.astype(int)]))
+        power_list.append(power_list_cond)
+
+    # shapiro test for normality
+    for cond in range(n_conds):
+        norm_test = stats.shapiro(power_list[cond])
+        if norm_test[1] < 0.05:
+            print('Data is likely not normally distributed,'
+                  ' \nconsider different statistical test.')
+
+    print(stats.ttest_rel(power_list[0], power_list[1]))
+
+
+def plot_group_timecourse(timecourse_list, tr):
+    n_subs = len(timecourse_list)
+    n_conds = len(timecourse_list[0])
+    n_points = len(timecourse_list[0][0])
+    time = np.arange(0, n_points * tr, tr)
+
+    timecourses = []
+    errors = []
+    for cond in range(n_conds):
+        cond_timecourses = []
+        for sub in range(n_subs):
+            timecourse_sub = timecourse_list[sub][cond]
+            cond_timecourses.append(timecourse_sub)
+        timecourses.append(np.mean(cond_timecourses, axis=0))
+        errors.append(np.std(cond_timecourses, axis=0))
+
+    fig, ax = plt.subplots()
+    plt.errorbar(time, timecourses[0], errors[0], alpha=0.7)
+    plt.errorbar(time, timecourses[1], errors[1], alpha=0.7)
+    ax.set_xlabel('Time (s)', fontsize=16)
+    ax.set_ylabel('Group BOLD Timecourse (A.U)', fontsize=16)
+    fig.set_figheight(4)
+    fig.set_figwidth(7)
+    plt.tight_layout()
+
+
+def save_group_timecourse(timecourse_list, fname):
+    n_subs = len(timecourse_list)
+    n_conds = len(timecourse_list[0])
+    n_points = len(timecourse_list[0][0])
+
+    timecourses = []
+    for cond in range(n_conds):
+        cond_timecourses = []
+        for sub in range(n_subs):
+            timecourse_sub = timecourse_list[sub][cond]
+            cond_timecourses.append(timecourse_sub)
+        timecourses.append(np.mean(cond_timecourses, axis=0))
+
+    savedata = np.array([timecourses[x] for x in range(n_conds)]).transpose()
+    np.savetxt(fname, savedata)
+
+
 
