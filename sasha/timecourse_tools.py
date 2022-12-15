@@ -32,7 +32,7 @@ class Timecourse:
         Repetition time of the fMRI sequence, i.e., sampling frequency in seconds.
 
     """
-    def __init__(self, data, coords=None, tr=None, savepath=None, basename=None, specifier=None):
+    def __init__(self, data, coords=None, tr=None, smooth=False, savepath=None, basename=None, specifier=None):
         self.path = savepath
         self.basename = basename
         self.data = data
@@ -40,7 +40,16 @@ class Timecourse:
         self.TR = tr
         voxel = coords
         if not len(np.shape(data)) == 1:
-            tcourse = np.squeeze(data[voxel[0], voxel[1], voxel[2], :])
+            if smooth:
+                tcourse_i = []
+                for i in [-1, 0, 1]:
+                    for j in [-1, 0, 1]:
+                        for k in [-1, 0, 1]:
+                            tcourse_i.append(np.squeeze(data[voxel[0] + i,
+                                                voxel[1] + j, voxel[2] + k, :]))
+                tcourse = np.mean(tcourse_i, axis=0)
+            else:
+                tcourse = np.squeeze(data[voxel[0], voxel[1], voxel[2], :])
         else:
             tcourse = data
         self.tcourse = tcourse

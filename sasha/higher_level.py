@@ -12,7 +12,7 @@ from pathlib import Path
 from scipy import stats
 
 class HigherTimecourse:
-    def __init__(self, data_fname_list, coords_list, TR):
+    def __init__(self, data_fname_list, coords_list, TR, smooth=False):
         self.data_list = data_fname_list
         self.coords_list = coords_list
         self.TR = TR
@@ -20,7 +20,7 @@ class HigherTimecourse:
         for lower in range(len(self.data_list)):
             data, affine = load_nifti(data_fname_list[lower])
             coords = self.coords_list[lower]
-            tcourse_list.append(Timecourse(data, coords, self.TR))
+            tcourse_list.append(Timecourse(data, coords, self.TR, smooth))
         self.tcourse_list = tcourse_list
         self.axlabel = 'Amplitude (A.U)'
 
