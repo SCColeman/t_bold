@@ -1,12 +1,12 @@
 from setuptools import setup
 
 setup(
-    name='sasha',
+    name='t_bold',
     version='1.0.0',
-    packages=['sasha'],
+    packages=['t_bold'],
     url='',
     license='',
     author='Sebastian C Coleman',
     author_email='ppysc6@nottingham.ac.uk',
-    description='BOLD timecourse analysis and stats'
+    description='BOLD pseudo t-stat analysis'
 )
